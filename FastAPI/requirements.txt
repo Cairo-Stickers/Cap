@@ -1,5 +1,4 @@
 fastapi
 uvicorn
-pymongo[srv]
+pymongo
 pydantic
-twilio
