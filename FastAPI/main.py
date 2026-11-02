@@ -6,11 +6,11 @@ import os
 
 app = FastAPI()
 
-# Replace with your actual MongoDB connection string
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://<username>:<password>@cluster0.../test")
+# Updated MongoDB connection string with the URL-encoded password
+MONGO_URI = "mongodb+srv://RaspberryPI:f%252%23vAmwtaQ-c.C@m0.ejnni6f.mongodb.net/health_monitor?retryWrites=true&w=majority"
 client = MongoClient(MONGO_URI)
 
-# Create a database called 'health_monitor' and a collection called 'sensor_data'
+# Database and Collection setup
 db = client.health_monitor
 collection = db.sensor_data
 
@@ -35,8 +35,7 @@ async def receive_telemetry(data: SensorPayload):
         # Insert into MongoDB
         result = collection.insert_one(document)
         
-        # Here is where the AI model prediction will run later
-        # is_anomaly = ai_model.predict([data.temperature, data.hr_raw, ...])
+        # The AI anomaly detection model logic will be inserted here later
         
         return {"status": "success", "inserted_id": str(result.inserted_id)}
         
@@ -49,7 +48,7 @@ async def get_latest_vitals(patient_id: str):
     latest = collection.find_one(
         {"patient_id": patient_id}, 
         sort=[("timestamp", -1)],
-        projection={"_id": 0} # Exclude the Mongo ObjectID from the response
+        projection={"_id": 0} # Exclude the Mongo ObjectID from the JSON response
     )
     if not latest:
         raise HTTPException(status_code=404, detail="No data found for this patient")
