@@ -14,10 +14,19 @@ client = MongoClient(MONGO_URI)
 db = client.health_monitor
 collection = db.sensor_data
 
-# --- Load the AI Watchdog Model ---
-# This loads into Vercel's memory the moment the server boots up
-watchdog_model = joblib.load('anomaly_watchdog.pkl')
+# --- AI Model Loading (Fixed for Vercel Serverless Pathing) ---
+# This forces Vercel to look in the exact same directory as this main.py script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, 'anomaly_watchdog.pkl')
 
+try:
+    watchdog_model = joblib.load(MODEL_PATH)
+    print("AI Watchdog loaded successfully.")
+except Exception as e:
+    print(f"Error loading AI model: {e}")
+    watchdog_model = None
+
+# --- Data Schema ---
 class SensorPayload(BaseModel):
     patient_id: str
     temperature: float
@@ -28,6 +37,7 @@ class SensorPayload(BaseModel):
     lat: float
     lon: float
 
+# --- AI Evaluation Logic ---
 def evaluate_patient_risk(data: SensorPayload):
     risk_score = 0
     anomalies = []
@@ -44,18 +54,19 @@ def evaluate_patient_risk(data: SensorPayload):
         risk_score += 5
         anomalies.append(f"Low Temp ({data.temperature}C)")
 
-    # 2. AI Sensor Fusion Watchdog
-    # The AI evaluates the hidden relationship between Temp, Movement, and Optical Data
-    if data.hr_raw > 100 and data.spo2_raw > 100:  # Ensure sensor is actually attached
+    # 2. AI Sensor Fusion Watchdog (Isolation Forest)
+    if watchdog_model is not None and data.hr_raw > 10000 and data.spo2_raw > 10000:
+        # Features must match the training order: ['temperature', 'accel_mag', 'hr_raw', 'spo2_raw']
         ai_input = np.array([[data.temperature, data.accel_mag, data.hr_raw, data.spo2_raw]])
         ai_prediction = watchdog_model.predict(ai_input)
         
-        if ai_prediction[0] == -1: # -1 means the Isolation Forest detected an anomaly
+        if ai_prediction[0] == -1: 
             risk_score += 5
             anomalies.append("AI WATCHDOG: Multi-Variable Vital Anomaly")
 
     return risk_score, anomalies
 
+# --- API Endpoints ---
 @app.post("/api/telemetry")
 async def receive_telemetry(data: SensorPayload):
     try:
@@ -87,3 +98,7 @@ async def get_latest_vitals(patient_id: str):
     if not latest:
         raise HTTPException(status_code=404, detail="No data found for this patient")
     return latest
+
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "IoT Health Monitor API is running."}
