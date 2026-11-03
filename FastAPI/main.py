@@ -12,28 +12,27 @@ client = MongoClient(MONGO_URI)
 db = client.health_monitor
 collection = db.sensor_data
 
-# --- 1. Updated Schema for Edge Computing DSP ---
+# --- Raw Data Schema ---
 class SensorPayload(BaseModel):
     patient_id: str
     temperature: float
-    bpm: int         # Updated from hr_raw
-    spo2: float      # Updated from spo2_raw
+    hr_raw: int      # Receiving raw Red LED light data
+    spo2_raw: int    # Receiving raw IR LED light data
     accel_mag: float
     fall_flag: int
     lat: float
     lon: float
 
 def evaluate_patient_risk(data: SensorPayload):
-    """
-    Expert System AI: Now evaluates actual human metrics.
-    """
     risk_score = 0
     anomalies = []
 
+    # 1. Fall Detection
     if data.fall_flag == 1:
         risk_score += 10
         anomalies.append("FALL DETECTED")
 
+    # 2. Temperature Anomalies
     if data.temperature > 39.0:
         risk_score += 5
         anomalies.append(f"High Temp ({data.temperature}C)")
@@ -41,17 +40,10 @@ def evaluate_patient_risk(data: SensorPayload):
         risk_score += 5
         anomalies.append(f"Low Temp ({data.temperature}C)")
 
-    # --- 2. Updated rules for SpO2% and BPM ---
-    if data.spo2 > 0 and data.spo2 < 90.0: 
-        risk_score += 4
-        anomalies.append(f"Low Oxygen ({data.spo2}%)")
-        
-    if data.bpm > 130:
-        risk_score += 3
-        anomalies.append(f"High Heart Rate ({data.bpm} BPM)")
-    elif data.bpm > 0 and data.bpm < 40:
-        risk_score += 3
-        anomalies.append(f"Low Heart Rate ({data.bpm} BPM)")
+    # 3. Optical Sensor Check (Ensures finger is on the sensor)
+    if data.hr_raw < 100 or data.spo2_raw < 100:
+        risk_score += 1
+        anomalies.append("Optical Sensor Disconnected")
 
     return risk_score, anomalies
 
@@ -68,7 +60,6 @@ async def receive_telemetry(data: SensorPayload):
         
         # Save to DB
         result = collection.insert_one(document)
-        
         document["alert_triggered"] = risk_score >= 8
         document["_id"] = str(result.inserted_id) 
         
