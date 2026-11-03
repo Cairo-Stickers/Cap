@@ -1,4 +1,7 @@
 fastapi
 uvicorn
-pymongo
 pydantic
+pymongo[srv]
+scikit-learn
+numpy
+joblib
